@@ -1256,7 +1256,6 @@ def _embedding_func_single(
     ## FORMAT EMBEDDING INPUT ##
     provider = model.split(".")[0]
 
-    print(f"*** PRovider {provider} ***")
 
     if inputImage and provider != "amazon":
         raise BedrockError(
