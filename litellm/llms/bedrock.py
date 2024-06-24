@@ -1242,11 +1242,12 @@ def _embedding_func_single(
     model: str,
     input: str,
     client: Any,
+    inputImage: Optional[str] = None,
     optional_params=None,
     encoding=None,
     logging_obj=None,
 ):
-    if isinstance(input, str) is False:
+    if isinstance(input, str) is False and inputImage is None:
         raise BedrockError(
             message="Bedrock Embedding API input must be type str | List[str]",
             status_code=400,
@@ -1254,6 +1255,15 @@ def _embedding_func_single(
     # logic for parsing in - calling - parsing out model embedding calls
     ## FORMAT EMBEDDING INPUT ##
     provider = model.split(".")[0]
+
+    print(f"*** PRovider {provider} ***")
+
+    if inputImage and provider != "amazon":
+        raise BedrockError(
+            message=f"Image embeddings only supported from provider 'amazon'",
+            status_code=400
+        )
+
     inference_params = copy.deepcopy(optional_params)
     inference_params.pop(
         "user", None
@@ -1262,8 +1272,11 @@ def _embedding_func_single(
         optional_params.pop("model_id", None) or model
     )  # default to model if not passed
     if provider == "amazon":
-        input = input.replace(os.linesep, " ")
+        if input:
+            input = input.replace(os.linesep, " ")
         data = {"inputText": input, **inference_params}
+        if inputImage:
+            data["inputImage"] = inputImage
         # data = json.dumps(data)
     elif provider == "cohere":
         inference_params["input_type"] = inference_params.get(
@@ -1287,6 +1300,8 @@ def _embedding_func_single(
             "request_str": request_str,
         },
     )
+    print(f"*** type: {type(inputImage)} ***")
+
     try:
         response = client.invoke_model(
             body=body,
@@ -1308,7 +1323,10 @@ def _embedding_func_single(
             response = [item for sublist in response for item in sublist]
             return response
         elif provider == "amazon":
-            return response_body.get("embedding")
+            res = response_body.get("embedding")
+            print("*** res ***")
+            print(res)
+            return res
     except Exception as e:
         raise BedrockError(
             message=f"Embedding Error with model {model}: {e}", status_code=500
@@ -1318,6 +1336,7 @@ def _embedding_func_single(
 def embedding(
     model: str,
     input: Union[list, str],
+    inputImage: Optional[str] = None,
     api_key: Optional[str] = None,
     logging_obj=None,
     model_response=None,
@@ -1346,35 +1365,62 @@ def embedding(
         aws_role_name=aws_role_name,
         aws_session_name=aws_session_name,
     )
-    if isinstance(input, str):
-        ## Embedding Call
+    if inputImage:
+        if input and not isinstance(input,str):
+            raise BedrockError(
+                message="Bedrock Embedding API input must be type str or unset when embedding an image",
+                status_code=400,
+            )
+
+        print(f"*** inputImage: {inputImage}")
+
+        if not isinstance(inputImage,str):
+            raise BedrockError(
+                message="Bedrock Embedding API inputImage must be type str when embedding an image",
+                status_code=400,
+            )
+
+        ## Embedding call - only a single pair of (input, inputImage) is supported by the API
         embeddings = [
             _embedding_func_single(
-                model,
-                input,
+                model=model,
+                input=input,
+                inputImage=inputImage,
                 optional_params=optional_params,
                 client=client,
                 logging_obj=logging_obj,
             )
         ]
-    elif isinstance(input, list):
-        ## Embedding Call - assuming this is a List[str]
-        embeddings = [
-            _embedding_func_single(
-                model,
-                i,
-                optional_params=optional_params,
-                client=client,
-                logging_obj=logging_obj,
-            )
-            for i in input
-        ]  # [TODO]: make these parallel calls
     else:
-        # enters this branch if input = int, ex. input=2
-        raise BedrockError(
-            message="Bedrock Embedding API input must be type str | List[str]",
-            status_code=400,
-        )
+        if isinstance(input, str):
+            ## Embedding Call
+            embeddings = [
+                _embedding_func_single(
+                    model=model,
+                    input=input,
+                    optional_params=optional_params,
+                    client=client,
+                    logging_obj=logging_obj,
+                )
+            ]
+        elif isinstance(input, list):
+            ## Embedding Call - assuming this is a List[str]
+            embeddings = [
+                _embedding_func_single(
+                    model=model,
+                    input=i,
+                    optional_params=optional_params,
+                    client=client,
+                    logging_obj=logging_obj,
+                )
+                for i in input
+            ]  # [TODO]: make these parallel calls
+        else:
+            # enters this branch if input = int, ex. input=2
+            raise BedrockError(
+                message="Bedrock Embedding API input must be type str | List[str]",
+                status_code=400,
+            )
 
     ## Populate OpenAI compliant dictionary
     embedding_response = []
@@ -1391,9 +1437,9 @@ def embedding(
     model_response["model"] = model
     input_tokens = 0
 
-    input_str = "".join(input)
-
-    input_tokens += len(encoding.encode(input_str))
+    if input:
+        input_str = "".join(input)
+        input_tokens += len(encoding.encode(input_str))
 
     usage = Usage(
         prompt_tokens=input_tokens, completion_tokens=0, total_tokens=input_tokens + 0

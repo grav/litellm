@@ -17,6 +17,7 @@ import inspect
 import json
 import logging
 import random
+import sys
 import threading
 import time
 import traceback
@@ -1842,13 +1843,15 @@ class Router:
     async def aembedding(
         self,
         model: str,
-        input: Union[str, List],
+        input: Optional[Union[str, List]] = None,
+        inputImage: Optional[str] = None,
         is_async: Optional[bool] = True,
         **kwargs,
     ) -> Union[List[float], None]:
         try:
             kwargs["model"] = model
             kwargs["input"] = input
+            kwargs["inputImage"] = inputImage,
             kwargs["original_function"] = self._aembedding
             kwargs["num_retries"] = kwargs.get("num_retries", self.num_retries)
             timeout = kwargs.get("request_timeout", self.timeout)
@@ -1867,6 +1870,7 @@ class Router:
             raise e
 
     async def _aembedding(self, input: Union[str, List], model: str, **kwargs):
+        print(f"router _aembedding: {kwargs.get("inputImage")}")
         model_name = None
         try:
             verbose_router_logger.debug(
@@ -1914,6 +1918,7 @@ class Router:
                 **{
                     **data,
                     "input": input,
+                    "inputImage": kwargs.get("inputImage")[0],
                     "caching": self.cache_responses,
                     "client": model_client,
                     **kwargs,
