@@ -1869,7 +1869,6 @@ class Router:
             raise e
 
     async def _aembedding(self, input: Union[str, List], model: str, **kwargs):
-        print(f"router _aembedding: {kwargs.get("inputImage")}")
         model_name = None
         try:
             verbose_router_logger.debug(
