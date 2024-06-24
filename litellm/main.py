@@ -3283,6 +3283,7 @@ def embedding(
             response = bedrock.embedding(
                 model=model,
                 input=input,
+                inputImage=kwargs.get("inputImage")[0],
                 encoding=encoding,
                 logging_obj=logging,
                 optional_params=optional_params,
